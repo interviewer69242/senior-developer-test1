@@ -1,0 +1,29 @@
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: trades
+      POSTGRES_USER: trades
+      POSTGRES_PASSWORD: trades
+    ports: ["127.0.0.1:5432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U trades -d trades"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  settlement:
+    image: python:3.12-slim
+    volumes: ["./simulator:/simulator:ro"]
+    command: ["python", "-u", "/simulator/server.py"]
+    ports: ["127.0.0.1:8090:8090"]
+  app:
+    build: .
+    environment:
+      DB_URL: jdbc:postgresql://db:5432/trades
+      SETTLEMENT_URL: http://settlement:8090
+    ports: ["127.0.0.1:8080:8080"]
+    depends_on:
+      db:
+        condition: service_healthy
+      settlement:
+        condition: service_started
