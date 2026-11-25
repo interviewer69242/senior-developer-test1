@@ -6,6 +6,7 @@ services:
       POSTGRES_USER: trades
       POSTGRES_PASSWORD: trades
     ports: ["127.0.0.1:5432:5432"]
+    volumes: ["trade-data:/var/lib/postgresql/data"]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U trades -d trades"]
       interval: 2s
@@ -16,14 +17,43 @@ services:
     volumes: ["./simulator:/simulator:ro"]
     command: ["python", "-u", "/simulator/server.py"]
     ports: ["127.0.0.1:8090:8090"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8090/settlements', timeout=2)"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
   app:
     build: .
     environment:
       DB_URL: jdbc:postgresql://db:5432/trades
       SETTLEMENT_URL: http://settlement:8090
-    ports: ["127.0.0.1:8080:8080"]
+    ports: ["127.0.0.1:8081:8080"]
     depends_on:
       db:
         condition: service_healthy
       settlement:
-        condition: service_started
+        condition: service_healthy
+  frontend:
+    build: ./frontend
+    ports: ["127.0.0.1:8080:80"]
+    depends_on:
+      - app
+  prometheus:
+    image: prom/prometheus:v3.3.0
+    volumes: ["./infrastructure/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro"]
+    ports: ["127.0.0.1:9090:9090"]
+    depends_on: [app]
+  grafana:
+    image: grafana/grafana:12.0.0
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: local-exercise-only
+    volumes:
+      - ./infrastructure/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infrastructure/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports: ["127.0.0.1:3000:3000"]
+    depends_on: [prometheus]
+volumes:
+  trade-data:
