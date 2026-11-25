@@ -1,0 +1,7 @@
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/trades}
+    username: ${DB_USER:trades}
+    password: ${DB_PASSWORD:trades}
+settlement:
+  url: ${SETTLEMENT_URL:http://localhost:8090}
