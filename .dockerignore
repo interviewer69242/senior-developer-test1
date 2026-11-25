@@ -1,0 +1,6 @@
+build
+.gradle
+target
+.git
+frontend/node_modules
+frontend/dist
