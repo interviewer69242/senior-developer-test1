@@ -1,11 +1,10 @@
-FROM maven:3.9.9-eclipse-temurin-21 AS build
+FROM gradle:8.12.1-jdk21 AS build
 WORKDIR /app
-COPY pom.xml .
-RUN mvn -B dependency:go-offline
-COPY src src
-RUN mvn -B -DskipTests package
+COPY --chown=gradle:gradle settings.gradle build.gradle ./
+COPY --chown=gradle:gradle src src
+RUN gradle --no-daemon bootJar
 FROM eclipse-temurin:21-jre
 WORKDIR /app
-COPY --from=build /app/target/trade-service-1.0.0.jar app.jar
+COPY --from=build /app/build/libs/app.jar app.jar
 EXPOSE 8080
 ENTRYPOINT ["java","-jar","app.jar"]
