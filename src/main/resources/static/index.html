@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trade Processing Service</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#f3f6fa;color:#18263a;font:15px/1.5 system-ui,sans-serif}main{max-width:1000px;margin:auto;padding:32px 20px}header{margin-bottom:26px}h1{font-size:28px;margin:0}h2{font-size:17px;margin:0 0 16px}p{margin:8px 0;color:#526278}.layout{display:grid;grid-template-columns:1fr 1fr;gap:20px}section{background:white;border:1px solid #dce3ec;border-radius:12px;padding:22px;min-width:0}.fields{display:grid;grid-template-columns:1fr 1fr;gap:12px}label{display:block;font-size:13px;font-weight:600}input,select{width:100%;padding:10px;border:1px solid #b9c5d3;border-radius:6px;background:white;font:inherit;color:inherit;margin-top:5px}button{font:inherit;font-weight:600;border:1px solid #174ca6;border-radius:6px;background:#174ca6;color:white;padding:10px 14px;cursor:pointer}button.secondary{background:white;color:#174ca6}button:disabled{opacity:.5;cursor:wait}.actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:16px}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#101c2d;color:#dce8f7;padding:15px;border-radius:8px;min-height:130px;font-size:13px}a{color:#174ca6}#status{font-weight:600;margin-top:16px}#history{padding-left:22px;overflow-wrap:anywhere}li{margin:8px 0}.full{grid-column:1/-1}@media(max-width:700px){.layout,.fields{grid-template-columns:1fr}}
+</style>
+</head>
+<body><main>
+<header><h1>Trade Processing Service</h1><p>Local API test console · Synthetic trades only</p></header>
+<div class="layout">
+<section><h2>Submit a trade</h2>
+<form id="trade-form"><div class="fields">
+<label>Client ID<input name="clientId" value="client-a" required maxlength="80"></label>
+<label>Client trade ID<input name="clientTradeId" value="order-1" required maxlength="80"></label>
+<label>Instrument<input name="instrument" value="ABC" required maxlength="20"></label>
+<label>Side<select name="side"><option>BUY</option><option>SELL</option></select></label>
+<label>Quantity<input name="quantity" type="number" value="10" min="0.0001" step="0.0001" required></label>
+<label>Price<input name="price" type="number" value="12.50" min="0.0001" step="0.0001" required></label>
+</div><div class="actions"><button type="submit">Submit trade</button><button type="button" class="secondary" id="new-ref">New reference</button><button type="button" class="secondary" id="retry">Retry last submission</button></div></form>
+<p>Submit the same reference twice to observe the current service behavior. Retry sends the exact last submitted payload.</p>
+</section>
+<section><h2>Retrieve a trade</h2><form id="lookup-form"><label>Trade UUID<input id="lookup-id" required placeholder="UUID from submission response"></label><div class="actions"><button type="submit">Retrieve trade</button></div></form>
+<h2 style="margin-top:24px">Settlement simulator</h2><p><a href="http://localhost:8090/settlements" target="_blank" rel="noopener">View settlement records (local simulator)</a></p><p>Simulator must be running on port 8090.</p></section>
+<section class="full"><h2>Latest API response</h2><div id="status" role="status">No request sent yet.</div><pre id="response">Submit or retrieve a trade to see its response.</pre><h2>Recent requests</h2><ol id="history"></ol><button id="clear" class="secondary">Clear display history</button><p>History is local to this page; clearing it does not delete persisted trades.</p></section>
+</div></main>
+<script>
+const form=document.getElementById('trade-form'), statusEl=document.getElementById('status'), responseEl=document.getElementById('response'), historyEl=document.getElementById('history'), lookup=document.getElementById('lookup-id');
+let last=null, busy=false;
+const retry=document.getElementById('retry');retry.disabled=true;
+async function request(method,path,payload){
+ if(busy)return;
+ busy=true;
+ const buttons=[...document.querySelectorAll('button')];buttons.forEach(b=>b.disabled=true);
+ statusEl.textContent=method+' '+path+' — sending…';
+ responseEl.textContent='';
+ const start=performance.now();
+ try{
+   const res=await fetch(path,{method,headers:payload?{'Content-Type':'application/json'}:{},body:payload?JSON.stringify(payload):undefined});
+   const raw=await res.text();let data;
+   try{data=JSON.parse(raw);}catch{data=null;}
+   responseEl.textContent=data===null?raw:JSON.stringify(data,null,2);
+   statusEl.textContent=method+' '+path+' — HTTP '+res.status+' · '+Math.round(performance.now()-start)+' ms';
+   if(res.ok&&data&&data.id)lookup.value=data.id;
+   const li=document.createElement('li');li.textContent=new Date().toLocaleTimeString()+' · '+statusEl.textContent+(data&&data.id?' · '+data.id:'');historyEl.prepend(li);
+ }catch(e){statusEl.textContent='Request failed';responseEl.textContent=String(e);}
+ finally{busy=false;buttons.forEach(b=>b.disabled=false);retry.disabled=!last;}
+}
+form.addEventListener('submit',e=>{
+ e.preventDefault();const d=Object.fromEntries(new FormData(form));
+ // Preserve exact decimal input as JSON strings; Jackson maps them to BigDecimal.
+ last=d;request('POST','/trades',d);
+});
+retry.addEventListener('click',()=>{if(last)request('POST','/trades',last);});
+document.getElementById('new-ref').addEventListener('click',()=>{form.elements.clientTradeId.value='order-'+Date.now();});
+document.getElementById('lookup-form').addEventListener('submit',e=>{e.preventDefault();request('GET','/trades/'+encodeURIComponent(lookup.value.trim()));});
+document.getElementById('clear').addEventListener('click',()=>historyEl.replaceChildren());
+</script></body></html>
