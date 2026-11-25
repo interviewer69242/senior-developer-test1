@@ -1,0 +1,7 @@
+# Discussion artifact only; not an executable CI/CD workflow.
+steps:
+  - run: gradle assemble
+  - run: docker build -t trades:latest .
+  - run: docker tag trades:latest registry.example/trades:latest
+  - run: docker push registry.example/trades:latest
+  - run: kubectl rollout restart deployment/trades
