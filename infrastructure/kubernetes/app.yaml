@@ -1,0 +1,53 @@
+# Local review/deployment example; supply a reachable image and dependencies.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: trades
+spec:
+  replicas: 2
+  selector:
+    matchLabels: {app: trades}
+  template:
+    metadata:
+      labels: {app: trades}
+    spec:
+      containers:
+        - name: app
+          image: trades:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          env:
+            - name: DB_URL
+              value: jdbc:postgresql://db:5432/trades
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef: {name: trades-db, key: username}
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: trades-db, key: password}
+            - name: SETTLEMENT_URL
+              value: http://settlement:8090
+          readinessProbe:
+            httpGet: {path: /actuator/health/readiness, port: 8080}
+            periodSeconds: 5
+          livenessProbe:
+            httpGet: {path: /actuator/health/liveness, port: 8080}
+            periodSeconds: 10
+          startupProbe:
+            httpGet: {path: /actuator/health/liveness, port: 8080}
+            failureThreshold: 30
+            periodSeconds: 2
+          resources:
+            requests: {cpu: 100m, memory: 256Mi}
+            limits: {cpu: "1", memory: 512Mi}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: trades
+spec:
+  selector: {app: trades}
+  ports:
+    - port: 8080
+      targetPort: 8080
