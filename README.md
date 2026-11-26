@@ -1,52 +1,54 @@
-# Trade Operations Portal | Round 2
+# Trade Operations Portal - 120-minute assessment
 
-Senior software engineer practical assessment. Synthetic data only. The exercise has a working starter architecture, but intentionally incomplete business behaviour. Do not use real credentials or proprietary systems.
+This synthetic Java 21/Spring Boot, PostgreSQL and React application records trades and calls a local settlement simulator. It contains a known correctness defect. Work in an isolated environment using synthetic data only. The persistence implementation uses Spring JDBC; inspect the code before assuming an ORM.
 
-## Setup
+## Run the application
 
-Docker with Compose, Bash, curl and Python 3 are sufficient for the smoke test. From a clean clone:
+Requirements: Docker with Compose, Bash, curl and Python 3. From the repository root:
 
 ```bash
 docker compose up -d --build
 bash scripts/smoke-test.sh
 ```
 
-| Service | Local URL |
-|---|---|
-| React portal and proxied REST API | http://localhost:8080 |
-| Direct backend and legacy test console | http://localhost:8081 |
-| Settlement simulator | http://localhost:8090/settlements |
-| Prometheus | http://localhost:9090 |
-| Grafana | http://localhost:3000/d/trades-overview |
-| Health | http://localhost:8081/actuator/health |
+Portal: http://localhost:8080; direct backend: http://localhost:8081; settlement records: http://localhost:8090/settlements; health: http://localhost:8081/actuator/health; Prometheus: http://localhost:9090; Grafana: http://localhost:3000/d/trades-overview. Stop with `docker compose down`. The interviewer provides a prepared environment if required.
 
-Ports bind only to loopback. The simulator and anonymous Grafana viewer are for local exercises, not production.
+The backend uses Gradle 8.12.1 and Java 21. Run `gradle test` locally; database integration tests require Docker. For the frontend, use Node 22: `cd frontend && npm install && npm test && npm run build`. See `scripts/test-backend.sh` for a container-based option.
 
-The primary build is now Gradle (8.12.1, JDK 21). For local backend development run `gradle test` and `gradle bootRun` after starting db and settlement. Stop the Compose app first to avoid port conflicts or set SERVER_PORT=8081. PostgreSQL integration tests require Docker. For frontend development use Node 22, `cd frontend && npm install && npm run dev` (Vite forwards /trades to the backend on 8081); `npm test` and `npm run build` validate frontend code. When running Gradle directly with the Vite proxy, set SERVER_PORT=8081. Maven is no longer supported.
+## Current API
 
-## API
-
-POST /trades accepts JSON; successful first submission returns 201, a trade UUID, request, creation timestamp and Location. GET /trades/{id} retrieves a trade or returns 404. Invalid input returns 400.
+POST /trades accepts a JSON request. A successful new trade returns 201 with a Location header and trade body; invalid input returns 400. GET /trades/{id} returns a trade or 404.
 
 ```bash
 curl -i http://localhost:8080/trades -H 'Content-Type: application/json' -d '{"clientId":"client-a","clientTradeId":"order-1","instrument":"ABC","side":"BUY","quantity":10,"price":12.50}'
 ```
 
-## Interview tasks (90 minutes total)
+## Scenario
 
-1. **Design (10 min):** Clarify requirements and explain the approach before using AI.
-2. **Backend (30 min):** Prevent duplicate trade records on client retries, including concurrent requests across multiple instances. Preserve the existing first-submission contract and validation. References are scoped to a client. Handle conflicting payloads explicitly and document response semantics. Avoid duplicate settlement calls on ordinary successful replays. Add meaningful automated tests, ideally including a real database concurrency test. Discuss migration safety and downstream uncertain outcomes; a complete distributed redesign is not required.
-3. **Frontend (10 min):** In the React portal, prevent duplicate clicks while the request is pending, distinguish new submissions, successful replays, conflicts and failures, and preserve the original payload/reference for retries. Show meaningful feedback and add focused tests where possible.
-4. **Incident investigation (15 min):** The interviewer will provide an incident report. Use available logs, metrics and commands to diagnose the fault and propose safe mitigation. Start independently.
-5. **Delivery review (10 min):** Review infrastructure/pipeline-review.yaml and infrastructure/kubernetes/app.yaml; explain production risks and prioritized improvements. The pipeline sample is not executable. The Kubernetes file is illustrative, requires an available image and separately supplied database/settlement services and secret; no cluster is required.
-6. **Technical defence (10 min):** Explain changes, trade-offs, verification and outstanding risks. An initial five-minute environment walkthrough completes the schedule.
+Clients retry when requests time out. Duplicate submissions currently create duplicate trades. Implement an idempotent API that remains correct across concurrent requests and service instances:
 
-AI and documentation are permitted during implementation. Be prepared to explain and verify all changes; do not disable tests or validation. Prioritize correctness over completeness. Do not change infrastructure just to hide failures.
+- Identity is the pair (clientId, clientTradeId). An initial valid submission returns 201 and the existing response shape and Location.
+- An identical replay returns 200 and the original trade; a reuse of the same identity with different business fields returns 409. Invalid input remains 400. Different clients may reuse a reference.
+- Avoid duplicate settlement calls on ordinary successful replays. Explain any uncertainty around a timeout or crash between database and external settlement; a full distributed redesign is not expected.
+- Include meaningful tests, including database-backed concurrency coverage where possible. Explain any missing verification. Consider existing data when proposing a migration.
 
-## Operations
+## Interview plan
 
-Use `docker compose ps`, `docker compose logs --tail=100 app frontend settlement db`, Grafana and the health/metrics endpoints to investigate. The simulator has normal and fault-injection modes; the interviewer will control them. To rebuild changes: `docker compose up -d --build`. To clear exercise data between candidates (destructive): `bash scripts/reset-environment.sh --confirm`.
+| Time | Activity | AI |
+|---|---|---|
+| 00-10 | Inspect, clarify, and outline approach | Off |
+| 10-40 | Investigate and implement | Allowed |
+| 40-55 | Review `review/synchronized-proposal.md` and explain its risks | Off |
+| 55-75 | Add and run tests; explain evidence | Allowed |
+| 75-90 | Review pipeline and Kubernetes readiness | Off |
+| 90-95 | Discuss a new event-publishing requirement | Off |
+| 95-110 | Implement, test or outline a safe response to that change | Allowed |
+| 110-120 | Defend decisions, gaps and risks | Off |
 
-## Deliverables
+Your interviewer will introduce the event requirement at the stated time. Manual work is equally acceptable; AI is optional. Be ready to explain every change and verify generated code. You may use documentation. Do not use real data or secrets. If setup fails, tell the interviewer so the clock can be paused.
 
-Focused source changes, tests, a short explanation of assumptions and remaining risks, and evidence of verification. The repository intentionally does not contain the interviewer answer key or confidential evaluation materials.
+## Repository map and deliverables
+
+`src/main/java` contains the API, service, persistence and settlement client; `src/test` contains starter tests; `frontend` is the portal; `infrastructure/pipeline-review.yaml` is an illustrative pipeline and `infrastructure/kubernetes/app.yaml` is a deployment example. `simulator` implements the local downstream.
+
+Deliver a focused change, tests and a short explanation of assumptions, commands run, results and limitations. Explain how the frontend and delivery process would adapt to new response semantics. No Kubernetes cluster is required.
